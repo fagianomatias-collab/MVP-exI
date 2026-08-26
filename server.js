@@ -23,7 +23,7 @@
  *     before relying on this in production — API surfaces evolve.
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, 'x.env') });
 
 const express = require('express');
 const cors = require('cors');

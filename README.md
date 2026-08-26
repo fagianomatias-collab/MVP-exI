@@ -17,10 +17,12 @@ never has to leave your server.
 
 ```bash
 npm install
-cp .env.example .env
 ```
 
-Edit `.env` and set:
+`x.env` is already the environment file template (no setup copy step needed
+— just edit it directly).
+
+Edit `x.env` and set:
 - `XAI_API_KEY` — your new key
 - `ALLOWED_ORIGINS` — the origin(s) your front-end is served from (use `*` only while testing locally)
 
@@ -61,7 +63,7 @@ a VPS, etc.).
 ## Things to double-check before relying on this
 
 - **Resolution values**: xAI's published examples only show `"720p"`
-  explicitly. `.env.example` defaults `XAI_VIDEO_RESOLUTION` to `480p` as a
+  explicitly. `x.env` defaults `XAI_VIDEO_RESOLUTION` to `480p` as a
   best-effort "low resolution" setting — verify the currently accepted
   values in [xAI's docs](https://docs.x.ai/developers/rest-api-reference/inference/videos)
   and adjust if the API rejects it.
