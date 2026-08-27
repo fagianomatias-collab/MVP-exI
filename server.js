@@ -40,6 +40,7 @@ if (ffmpegPath) {
 
 const {
   XAI_API_KEY,
+  ANTHROPIC_API_KEY,
   PORT = 3001,
   XAI_VIDEO_MODEL = 'grok-imagine-video',
   XAI_VIDEO_RESOLUTION = '480p',
@@ -50,9 +51,15 @@ const {
 } = process.env;
 
 if (!XAI_API_KEY) {
-  console.error('Missing XAI_API_KEY. Copy .env.example to .env and set a freshly-rotated key.');
+  console.error('Missing XAI_API_KEY. Set it in x.env (local) or your host\'s environment variables.');
   process.exit(1);
 }
+
+if (!ANTHROPIC_API_KEY) {
+  console.warn('Missing ANTHROPIC_API_KEY — /api/generate (text generation) will not work until this is set.');
+}
+
+const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 
 const XAI_BASE_URL = 'https://api.x.ai/v1';
 const POLL_INTERVAL = parseInt(POLL_INTERVAL_MS, 10);
@@ -270,6 +277,52 @@ const allowedOrigins = ALLOWED_ORIGINS === '*' ? '*' : ALLOWED_ORIGINS.split(','
 app.use(cors({ origin: allowedOrigins }));
 
 app.use('/outputs', express.static(OUTPUTS_DIR));
+
+// Proxies text generation (plot / characters / map / script) to Anthropic's
+// API using a server-held key. This is what lets the front-end work in any
+// regular browser, not just Claude's own in-app preview.
+app.post('/api/generate', async (req, res) => {
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY.' });
+  }
+  const prompt = req.body && req.body.prompt;
+  const maxTokens = (req.body && req.body.maxTokens) || 1000;
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ error: 'Request body must include a "prompt" string.' });
+  }
+
+  try {
+    const response = await fetch(`${ANTHROPIC_BASE_URL}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const msg = (data && data.error && data.error.message) || `Anthropic API error (HTTP ${response.status})`;
+      return res.status(response.status).json({ error: msg });
+    }
+    const text = (data.content || [])
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+      .trim();
+    if (!text) {
+      return res.status(502).json({ error: 'Empty response from Anthropic API' });
+    }
+    res.json({ text });
+  } catch (err) {
+    res.status(502).json({ error: err && err.message ? err.message : 'Failed to reach Anthropic API' });
+  }
+});
 
 app.post('/api/jobs', (req, res) => {
   const scenes = req.body && req.body.scenes;

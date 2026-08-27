@@ -1,17 +1,26 @@
-# Exponential Imagination — Video Generation Backend
+# Exponential Imagination — Backend
 
-Turns your story's scenes into short AI-generated video clips (via xAI's
-`grok-imagine-video`), stitches them into one final movie, and reports
-progress to the front-end — while keeping your xAI API key server-side,
-where it belongs.
+Two things, one server:
 
-## ⚠️ First: rotate your API key
+1. **Text generation proxy** — plot, characters, map, and script generation
+   now route through here to Anthropic's API, using a server-held key. This
+   is required for the app to work in a normal browser: calling
+   `api.anthropic.com` directly from the front-end only works inside
+   Claude's own in-app preview (which injects credentials invisibly) — in
+   any other browser it fails immediately with no valid auth.
+2. **Video generation** — turns script scenes into short AI-generated video
+   clips (via xAI's `grok-imagine-video`), stitches them into one final
+   movie, and reports progress to the front-end.
 
-A key was pasted into a chat earlier in this project. **Treat it as
-compromised.** Go to https://console.x.ai/team/default/api-keys, revoke it,
-and generate a brand new one. Never paste API keys into chat, client-side
-JavaScript, or a public repo — this backend exists specifically so the key
-never has to leave your server.
+Both xAI and Anthropic API keys stay server-side, never in the front-end or the repo.
+
+## ⚠️ First: rotate any exposed API key
+
+If a key was ever pasted into chat, **treat it as compromised.** Revoke it
+and generate a fresh one — for xAI at https://console.x.ai/team/default/api-keys,
+for Anthropic at https://console.anthropic.com/settings/keys. Never paste
+API keys into chat, client-side JavaScript, or a public repo — this backend
+exists specifically so keys never have to leave your server.
 
 ## Setup
 
@@ -23,7 +32,8 @@ npm install
 — just edit it directly).
 
 Edit `x.env` and set:
-- `XAI_API_KEY` — your new key
+- `XAI_API_KEY` — your xAI key
+- `ANTHROPIC_API_KEY` — your Anthropic key
 - `ALLOWED_ORIGINS` — the origin(s) your front-end is served from (use `*` only while testing locally)
 
 Then:
@@ -34,11 +44,12 @@ npm start
 
 The server listens on `PORT` (default `3001`) and exposes:
 
+- `POST /api/generate` — body: `{ "prompt": "...", "maxTokens": 1000 }`. Returns `{ "text": "..." }`. Used for plot/characters/map/script generation.
 - `POST /api/jobs` — body: `{ "scenes": [ { "title", "location", "characters", "description", "dialogue" }, ... ] }` (4 scenes expected). Returns `{ "jobId": "..." }` immediately; processing happens in the background.
 - `GET /api/jobs/:id` — returns `{ id, status, progress, videoUrl, error }`. `status` is one of `starting → prompts_created → generating → combining → done` (or `error`).
 - `GET /outputs/<jobId>.mp4` — the final combined video, once `status` is `done`.
 
-## How it works
+## How video generation works
 
 1. Builds **2 prompts per scene** (8 total for 4 scenes), each asking xAI for a ~14 second clip — the two clips per scene are written to cover the first and second half of that scene's action/dialogue, so together they span the scene.
 2. Calls `POST https://api.x.ai/v1/videos/generations` for each prompt, then polls `GET https://api.x.ai/v1/videos/{request_id}` until `status: "done"`.
