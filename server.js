@@ -288,6 +288,7 @@ app.post('/api/generate', async (req, res) => {
   const prompt = req.body && req.body.prompt;
   const maxTokens = (req.body && req.body.maxTokens) || 1000;
   if (!prompt || typeof prompt !== 'string') {
+    console.error('Rejected /api/generate request. Content-Type:', req.headers['content-type'], 'Body:', JSON.stringify(req.body));
     return res.status(400).json({ error: 'Request body must include a "prompt" string.' });
   }
 
