@@ -271,10 +271,19 @@ async function processJob(job, scenes) {
 // HTTP API
 // ---------------------------------------------------------------------------
 const app = express();
-app.use(express.json({ limit: '2mb' }));
 
+// CORS must be registered before body parsing: if JSON parsing throws,
+// Express skips straight to error-handling middleware, and any middleware
+// registered after the point of failure (like cors()) never runs — which
+// would send an error response with no CORS headers, and the browser would
+// report that as a CORS failure rather than a normal HTTP error.
 const allowedOrigins = ALLOWED_ORIGINS === '*' ? '*' : ALLOWED_ORIGINS.split(',').map((s) => s.trim());
 app.use(cors({ origin: allowedOrigins }));
+
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, res, buf) => { req.rawBody = buf.toString('utf8'); }
+}));
 
 app.use('/outputs', express.static(OUTPUTS_DIR));
 
@@ -288,7 +297,7 @@ app.post('/api/generate', async (req, res) => {
   const prompt = req.body && req.body.prompt;
   const maxTokens = (req.body && req.body.maxTokens) || 1000;
   if (!prompt || typeof prompt !== 'string') {
-    console.error('Rejected /api/generate request. Content-Type:', req.headers['content-type'], 'Body:', JSON.stringify(req.body));
+    console.error('Rejected /api/generate request. Content-Type:', req.headers['content-type'], 'Raw body:', req.rawBody, 'Parsed body:', JSON.stringify(req.body));
     return res.status(400).json({ error: 'Request body must include a "prompt" string.' });
   }
 
@@ -345,6 +354,15 @@ app.get('/api/jobs/:id', (req, res) => {
 });
 
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+// Catches anything that bypassed the route handlers above — most notably a
+// malformed JSON body, which express.json() rejects before routing ever runs.
+// Logging this is what will reveal the real cause if /api/generate keeps
+// returning 400 without the custom log line inside that route firing.
+app.use((err, req, res, next) => {
+  console.error('Unhandled request error. Content-Type:', req.headers['content-type'], 'Raw body:', req.rawBody, 'Error:', err && err.message);
+  res.status(400).json({ error: 'Bad request: ' + (err && err.message ? err.message : 'unknown parsing error') });
+});
 
 app.listen(PORT, () => {
   console.log(`Video backend listening on port ${PORT}`);
