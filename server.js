@@ -41,6 +41,7 @@ if (ffmpegPath) {
 const {
   XAI_API_KEY,
   ANTHROPIC_API_KEY,
+  ANTHROPIC_WORKSPACE_ID,
   PORT = 3001,
   XAI_VIDEO_MODEL = 'grok-imagine-video',
   XAI_VIDEO_RESOLUTION = '480p',
@@ -57,6 +58,9 @@ if (!XAI_API_KEY) {
 
 if (!ANTHROPIC_API_KEY) {
   console.warn('Missing ANTHROPIC_API_KEY — /api/generate (text generation) will not work until this is set.');
+}
+if (ANTHROPIC_API_KEY && !ANTHROPIC_WORKSPACE_ID) {
+  console.warn('ANTHROPIC_WORKSPACE_ID is not set. If your key is an "identity-linked" key, Anthropic will reject requests with: "anthropic-workspace-id is required...". Set ANTHROPIC_WORKSPACE_ID if you hit that error.');
 }
 
 const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
@@ -302,13 +306,18 @@ app.post('/api/generate', async (req, res) => {
   }
 
   try {
+    const anthropicHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    };
+    if (ANTHROPIC_WORKSPACE_ID) {
+      anthropicHeaders['anthropic-workspace-id'] = ANTHROPIC_WORKSPACE_ID;
+    }
+
     const response = await fetch(`${ANTHROPIC_BASE_URL}/messages`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
+      headers: anthropicHeaders,
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: maxTokens,
