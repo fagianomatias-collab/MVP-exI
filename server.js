@@ -189,7 +189,8 @@ async function pollVideoResult(requestId) {
       return data.video.url;
     }
     if (data.status === 'failed' || data.status === 'error') {
-      throw new Error('xAI reported the video generation failed');
+      const reason = (data.error && (data.error.message || data.error)) || data.reason || data.message || 'no reason provided by xAI';
+      throw new Error(`xAI reported the video generation failed: ${reason}`);
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
   }
@@ -247,8 +248,14 @@ async function processJob(job, scenes) {
     job.status = 'generating';
     const clipPaths = [];
     for (let i = 0; i < prompts.length; i++) {
-      const requestId = await startVideoGeneration(prompts[i].prompt);
-      const videoUrl = await pollVideoResult(requestId);
+      const clipLabel = `Scene ${prompts[i].sceneIndex + 1}, part ${prompts[i].part} (clip ${i + 1} of ${prompts.length})`;
+      let requestId, videoUrl;
+      try {
+        requestId = await startVideoGeneration(prompts[i].prompt);
+        videoUrl = await pollVideoResult(requestId);
+      } catch (clipErr) {
+        throw new Error(`${clipLabel} failed: ${clipErr.message}`);
+      }
       const clipPath = path.join(jobTmpDir, `clip-${String(i).padStart(2, '0')}.mp4`);
       await downloadFile(videoUrl, clipPath);
       clipPaths.push(clipPath);
